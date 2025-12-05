@@ -51,10 +51,10 @@
     </div>
 </div>
 
-<script>
+    <script>
     let gewaehltesFettPro100g = 0;
+    let gewaehlterName = ""; // Neu: Wir merken uns den Namen
 
-    // Funktion 1: Open Food Facts abfragen
     async function suchen() {
         let query = document.getElementById('searchInput').value;
         if (!query) return;
@@ -62,13 +62,11 @@
         document.getElementById('loading').style.display = 'block';
         document.getElementById('results').innerHTML = '';
 
-        // Wir nutzen die API von Open Food Facts
         let url = `https://de.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1`;
 
         try {
             let response = await fetch(url);
             let data = await response.json();
-            
             document.getElementById('loading').style.display = 'none';
             anzeigen(data.products);
         } catch (e) {
@@ -77,7 +75,6 @@
         }
     }
 
-    // Funktion 2: Ergebnisse anzeigen
     function anzeigen(produkte) {
         let liste = document.getElementById('results');
         if (!produkte || produkte.length === 0) {
@@ -86,7 +83,6 @@
         }
 
         produkte.forEach(prod => {
-            // Nur Produkte mit Fettangaben anzeigen
             if (prod.nutriments && prod.nutriments.fat_100g !== undefined) {
                 let li = document.createElement('li');
                 li.className = 'product-item';
@@ -99,16 +95,16 @@
                         <span class="product-fat">Fett: ${prod.nutriments.fat_100g}g / 100g</span>
                     </div>
                 `;
-                // Beim Klick: Popup öffnen
-                li.onclick = () => openPopup(prod.product_name, prod.nutriments.fat_100g);
+                // WICHTIG: Wir übergeben jetzt auch den Namen!
+                li.onclick = () => openPopup(prod.product_name || 'Produkt', prod.nutriments.fat_100g);
                 liste.appendChild(li);
             }
         });
     }
 
-    // Funktion 3: Popup steuern
     function openPopup(name, fett100g) {
         gewaehltesFettPro100g = fett100g;
+        gewaehlterName = name; // Name speichern
         document.getElementById('popupTitle').innerText = name;
         document.getElementById('grammPopup').style.display = 'flex';
         document.getElementById('grammInput').focus();
@@ -118,31 +114,32 @@
         document.getElementById('grammPopup').style.display = 'none';
     }
 
-    // Funktion 4: Berechnen und zurückschicken
     function uebernehmen() {
         let menge = parseFloat(document.getElementById('grammInput').value);
         if (!menge) return;
 
-        // Mathe: (Menge * FettPro100) / 100
         let totalFett = (menge * gewaehltesFettPro100g) / 100;
-        
-        // Runden auf 1 Nachkommastelle
         totalFett = Math.round(totalFett * 10) / 10;
 
-        // Wir speichern das Ergebnis im Browser-Speicher ("Briefkasten")
-        // Damit die Hauptseite es gleich abholen kann.
-        // WICHTIG: Wir addieren es zum bestehenden Wert dazu!
-        let alterWert = parseFloat(localStorage.getItem('kreon_temp_fett') || 0);
-        localStorage.setItem('kreon_temp_fett', alterWert + totalFett);
+        // NEUE LOGIK: Wir laden die alte Liste, fügen hinzu, speichern die Liste
+        let aktuelleListe = JSON.parse(localStorage.getItem('kreon_liste') || "[]");
+        
+        aktuelleListe.push({
+            name: gewaehlterName,
+            menge: menge,
+            fett: totalFett
+        });
 
-        // Zurück zur Hauptseite
+        localStorage.setItem('kreon_liste', JSON.stringify(aktuelleListe));
+
         window.location.href = "index.html";
     }
 
     function zurueck() {
         window.location.href = "index.html";
     }
-</script>
+    </script>
+    
 
 </body>
 </html>
