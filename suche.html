@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lebensmittel Suche</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f0f2f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #0084ff; }
+        
+        input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background-color: #0084ff; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #0073e6; }
+        button.back-btn { background-color: #6c757d; margin-top: 10px; }
+
+        /* Die Ergebnis-Liste */
+        #results { margin-top: 20px; list-style: none; padding: 0; }
+        .product-item { background: #fff; border-bottom: 1px solid #eee; padding: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .product-item:hover { background-color: #f9f9f9; }
+        .product-info { flex-grow: 1; }
+        .product-name { font-weight: bold; display: block; }
+        .product-fat { color: #666; font-size: 0.9em; }
+        .product-img { width: 50px; height: 50px; object-fit: contain; margin-right: 15px; }
+
+        /* Das Popup für die Grammeingabe */
+        #grammPopup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .popup-content { background: white; padding: 20px; border-radius: 10px; width: 80%; max-width: 300px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🔍 Lebensmittel Suche</h2>
+    
+    <input type="text" id="searchInput" placeholder="Produktname oder EAN-Code...">
+    <button onclick="suchen()">Suchen</button>
+    <button class="back-btn" onclick="zurueck()">Zurück zum Rechner</button>
+
+    <div id="loading" style="display:none; text-align:center; margin-top:20px;">Lade...</div>
+    <ul id="results"></ul>
+</div>
+
+<div id="grammPopup">
+    <div class="popup-content">
+        <h3 id="popupTitle">Menge eingeben</h3>
+        <p>Wie viel wird gegessen?</p>
+        <input type="number" id="grammInput" placeholder="Gramm (z.B. 100)">
+        <button onclick="uebernehmen()" style="margin-top:10px;">Übernehmen</button>
+        <button onclick="closePopup()" class="back-btn" style="background: white; color: #666; margin-top: 5px;">Abbrechen</button>
+    </div>
+</div>
+
+<script>
+    let gewaehltesFettPro100g = 0;
+
+    // Funktion 1: Open Food Facts abfragen
+    async function suchen() {
+        let query = document.getElementById('searchInput').value;
+        if (!query) return;
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results').innerHTML = '';
+
+        // Wir nutzen die API von Open Food Facts
+        let url = `https://de.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1`;
+
+        try {
+            let response = await fetch(url);
+            let data = await response.json();
+            
+            document.getElementById('loading').style.display = 'none';
+            anzeigen(data.products);
+        } catch (e) {
+            alert("Fehler beim Laden. Internetverbindung prüfen.");
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    // Funktion 2: Ergebnisse anzeigen
+    function anzeigen(produkte) {
+        let liste = document.getElementById('results');
+        if (!produkte || produkte.length === 0) {
+            liste.innerHTML = '<li style="padding:10px; text-align:center;">Nichts gefunden.</li>';
+            return;
+        }
+
+        produkte.forEach(prod => {
+            // Nur Produkte mit Fettangaben anzeigen
+            if (prod.nutriments && prod.nutriments.fat_100g !== undefined) {
+                let li = document.createElement('li');
+                li.className = 'product-item';
+                let bild = prod.image_front_small_url ? `<img src="${prod.image_front_small_url}" class="product-img">` : '';
+                
+                li.innerHTML = `
+                    ${bild}
+                    <div class="product-info">
+                        <span class="product-name">${prod.product_name || 'Unbekannt'}</span>
+                        <span class="product-fat">Fett: ${prod.nutriments.fat_100g}g / 100g</span>
+                    </div>
+                `;
+                // Beim Klick: Popup öffnen
+                li.onclick = () => openPopup(prod.product_name, prod.nutriments.fat_100g);
+                liste.appendChild(li);
+            }
+        });
+    }
+
+    // Funktion 3: Popup steuern
+    function openPopup(name, fett100g) {
+        gewaehltesFettPro100g = fett100g;
+        document.getElementById('popupTitle').innerText = name;
+        document.getElementById('grammPopup').style.display = 'flex';
+        document.getElementById('grammInput').focus();
+    }
+
+    function closePopup() {
+        document.getElementById('grammPopup').style.display = 'none';
+    }
+
+    // Funktion 4: Berechnen und zurückschicken
+    function uebernehmen() {
+        let menge = parseFloat(document.getElementById('grammInput').value);
+        if (!menge) return;
+
+        // Mathe: (Menge * FettPro100) / 100
+        let totalFett = (menge * gewaehltesFettPro100g) / 100;
+        
+        // Runden auf 1 Nachkommastelle
+        totalFett = Math.round(totalFett * 10) / 10;
+
+        // Wir speichern das Ergebnis im Browser-Speicher ("Briefkasten")
+        // Damit die Hauptseite es gleich abholen kann.
+        // WICHTIG: Wir addieren es zum bestehenden Wert dazu!
+        let alterWert = parseFloat(localStorage.getItem('kreon_temp_fett') || 0);
+        localStorage.setItem('kreon_temp_fett', alterWert + totalFett);
+
+        // Zurück zur Hauptseite
+        window.location.href = "index.html";
+    }
+
+    function zurueck() {
+        window.location.href = "index.html";
+    }
+</script>
+
+</body>
+</html>
