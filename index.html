@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kreon Rechner Online</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f0f2f5; color: #1c1e21; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2 { text-align: center; margin-bottom: 20px; color: #050505; }
+        label { display: block; margin-top: 15px; font-weight: 600; font-size: 14px; color: #65676b; }
+        input { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ced0d4; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background-color: #0084ff; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; margin-top: 25px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #0073e6; }
+        .result { margin-top: 25px; padding: 20px; background-color: #e7f3ff; border: 1px solid #dbe7f2; border-radius: 8px; text-align: center; }
+        .result-main { font-size: 24px; font-weight: bold; color: #0084ff; margin-bottom: 10px; }
+        .result-details { font-size: 14px; color: #606770; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>💊 Kreon Rechner</h2>
+
+    <label for="fatInput">Fettgehalt (g):</label>
+    <input type="number" id="fatInput" inputmode="numeric" placeholder="z.B. 25">
+
+    <label for="factorInput">Faktor (Lipase pro g Fett):</label>
+    <input type="number" id="factorInput" inputmode="numeric" value="2000">
+
+    <button onclick="berechneUndEmpfehle()">Berechnen</button>
+
+    <div id="ergebnisBox" class="result" style="display:none;">
+        <div id="kapselVorschlag" class="result-main"></div>
+        <div id="detailInfo" class="result-details"></div>
+    </div>
+</div>
+
+<script>
+    function berechneUndEmpfehle() {
+        let fett = parseFloat(document.getElementById('fatInput').value);
+        let faktor = parseFloat(document.getElementById('factorInput').value);
+
+        if (!fett || !faktor) {
+            alert("Bitte Werte eingeben");
+            return;
+        }
+
+        // 1. Bedarf berechnen
+        let bedarf = fett * faktor;
+        let restBedarf = bedarf;
+        
+        // Verfügbare Kapseln (Größte zuerst!)
+        let kapseln = [35000, 25000, 10000];
+        let vorschlag = [];
+
+        // 2. Logik: So viele große Kapseln wie möglich nehmen
+        for (let i = 0; i < kapseln.length; i++) {
+            let kapselGröße = kapseln[i];
+            
+            // Wie oft passt die Kapsel ganz rein?
+            let anzahl = Math.floor(restBedarf / kapselGröße);
+            
+            if (anzahl > 0) {
+                vorschlag.push(anzahl + "x " + (kapselGröße/1000) + ".000er");
+                restBedarf = restBedarf - (anzahl * kapselGröße);
+            }
+        }
+
+        // 3. Logik: Wenn noch ein Restbedarf da ist (selbst 1 Einheit),
+        // nehmen wir die KLEINSTE Kapsel, um aufzufüllen (Sicherheitszuschlag)
+        if (restBedarf > 0) {
+            // Wir nehmen die kleinste verfügbare Kapsel (die letzte im Array)
+            let kleinsteKapsel = kapseln[kapseln.length - 1]; 
+            
+            // Prüfen, ob wir das schon im Vorschlag haben, ist etwas kompliziert für V1.
+            // Wir fügen sie einfach als "Auffüller" hinzu.
+            vorschlag.push("1x " + (kleinsteKapsel/1000) + ".000er (zum Auffüllen)");
+        }
+
+        // Anzeige
+        document.getElementById('ergebnisBox').style.display = 'block';
+        
+        // Wenn Bedarf 0 oder negativ war (Fehlbedienung)
+        if (bedarf <= 0) {
+             document.getElementById('kapselVorschlag').innerText = "Kein Bedarf";
+        } else {
+             document.getElementById('kapselVorschlag').innerText = vorschlag.join(" + ");
+             document.getElementById('detailInfo').innerHTML = 
+                "Exakter Bedarf: " + bedarf.toLocaleString() + " Einheiten.<br>" +
+                "Kalkuliert mit Puffer.";
+        }
+    }
+</script>
+
+</body>
+</html>
