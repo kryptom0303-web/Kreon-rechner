@@ -47,6 +47,10 @@
         <input type="number" id="fatInput" inputmode="numeric" placeholder="0">
         <button class="clear-btn" onclick="resetFett()">x</button>
     </div>
+
+
+  <button onclick="window.location.href='suche.html'" style="background-color: #6c757d; margin-top: 0; margin-bottom: 10px;">🔍 In Datenbank suchen</button>
+    
     
     <div class="quick-buttons">
         <button class="q-btn" onclick="addFett(1)">+1</button>
@@ -89,11 +93,38 @@
             document.getElementById('factorInput').value = gespeicherterFaktor;
         }
 
-        // Checkboxen laden (wir müssen prüfen ob "true" oder "false" gespeichert wurde)
+        // Checkboxen laden
         loadCheckbox('check35', 'kreon_check35');
         loadCheckbox('check25', 'kreon_check25');
         loadCheckbox('check10', 'kreon_check10');
+
+        // NEU: Prüfen, ob wir Fett aus der Suche mitgebracht haben
+        let importiertesFett = localStorage.getItem('kreon_temp_fett');
+        if (importiertesFett) {
+            // Wenn ja: Ins Feld eintragen
+            let aktuellerWert = parseFloat(document.getElementById('fatInput').value) || 0;
+            // Da wir in suche.html schon addieren, können wir hier entscheiden:
+            // Entweder wir ersetzen den Wert oder wir addieren ihn. 
+            // Der Code in suche.html ist so gebaut, dass er es dort zwischenspeichert.
+            // Am einfachsten: Wir nehmen den Wert aus dem Speicher und setzen ihn ins Feld.
+            document.getElementById('fatInput').value = importiertesFett;
+            
+            // Wichtig: Den "Briefkasten" leeren, damit es beim nächsten Neuladen (F5) nicht nochmal passiert
+            // Aber Vorsicht: Wenn man mehrere Produkte hintereinander sucht, wollen wir addieren.
+            // Meine Logik in suche.html war: alterWert + neuesFett.
+            // Also zeigen wir hier einfach den Speicherwert an.
+            
+            // Optional: Automatisch berechnen?
+            // berechneUndEmpfehle(); 
+        }
     };
+    
+    // Kleines Update für die Reset-Funktion, damit auch der Speicher gelöscht wird
+    function resetFett() {
+        document.getElementById('fatInput').value = '';
+        document.getElementById('ergebnisBox').style.display = 'none';
+        localStorage.removeItem('kreon_temp_fett'); // Speicher leeren
+    }
 
     // Hilfsfunktion zum Laden der Checkboxen
     function loadCheckbox(elementId, storageKey) {
