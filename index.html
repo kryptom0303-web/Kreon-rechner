@@ -57,7 +57,12 @@
         <button class="q-btn" onclick="addFett(5)">+5</button>
         <button class="q-btn" onclick="addFett(10)">+10</button>
     </div>
-
+    <div id="foodListContainer" style="margin-top: 15px; display:none;">
+        <label style="margin-bottom:5px;">Erfasste Lebensmittel:</label>
+        <ul id="foodList" style="list-style:none; padding:0; background:#fff; border:1px solid #eee; border-radius:8px;">
+            </ul>
+    </div>
+    
     <label for="factorInput">Faktor (Lipase pro g Fett):</label>
     <input type="number" id="factorInput" inputmode="numeric" placeholder="z.B. 2000" onchange="speichereDaten()">
 
@@ -98,33 +103,71 @@
         loadCheckbox('check25', 'kreon_check25');
         loadCheckbox('check10', 'kreon_check10');
 
-        // NEU: Prüfen, ob wir Fett aus der Suche mitgebracht haben
-        let importiertesFett = localStorage.getItem('kreon_temp_fett');
-        if (importiertesFett) {
-            // Wenn ja: Ins Feld eintragen
-            let aktuellerWert = parseFloat(document.getElementById('fatInput').value) || 0;
-            // Da wir in suche.html schon addieren, können wir hier entscheiden:
-            // Entweder wir ersetzen den Wert oder wir addieren ihn. 
-            // Der Code in suche.html ist so gebaut, dass er es dort zwischenspeichert.
-            // Am einfachsten: Wir nehmen den Wert aus dem Speicher und setzen ihn ins Feld.
-            document.getElementById('fatInput').value = importiertesFett;
-            
-            // Wichtig: Den "Briefkasten" leeren, damit es beim nächsten Neuladen (F5) nicht nochmal passiert
-            // Aber Vorsicht: Wenn man mehrere Produkte hintereinander sucht, wollen wir addieren.
-            // Meine Logik in suche.html war: alterWert + neuesFett.
-            // Also zeigen wir hier einfach den Speicherwert an.
-            
-            // Optional: Automatisch berechnen?
-            // berechneUndEmpfehle(); 
-        }
+        // NEU: Lebensmittelliste laden und anzeigen
+        updateFoodList();
     };
-    
-    // Kleines Update für die Reset-Funktion, damit auch der Speicher gelöscht wird
+
+    // Diese Funktion kümmert sich um die Liste und berechnet das Gesamt-Fett
+    function updateFoodList() {
+        let liste = JSON.parse(localStorage.getItem('kreon_liste') || "[]");
+        let listContainer = document.getElementById('foodList');
+        let containerBox = document.getElementById('foodListContainer');
+        let gesamtFett = 0;
+
+        // Liste leeren und neu bauen
+        listContainer.innerHTML = "";
+
+        if (liste.length > 0) {
+            containerBox.style.display = 'block';
+            
+            liste.forEach((item, index) => {
+                gesamtFett += item.fett;
+
+                let li = document.createElement('li');
+                li.style.cssText = "padding: 8px 10px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; font-size: 14px;";
+                
+                // Text: "Nudeln (200g): 3g Fett"
+                li.innerHTML = `
+                    <span><b>${item.menge}g</b> ${item.name} <br><small style='color:#666'>${item.fett}g Fett</small></span>
+                    <button onclick="loescheEintrag(${index})" style="background:#ffdddd; color:red; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">🗑️</button>
+                `;
+                listContainer.appendChild(li);
+            });
+        } else {
+            containerBox.style.display = 'none';
+        }
+
+        // Das berechnete Fett ins Feld schreiben
+        // (Wir runden auf 1 Nachkommastelle um krumme Zahlen wie 15.0000001 zu vermeiden)
+        gesamtFett = Math.round(gesamtFett * 10) / 10;
+        
+        // Wenn man manuell noch was dazu tippt (z.B. per +Buttons), wollen wir das nicht überschreiben,
+        // aber hier gehen wir davon aus, dass die Liste die Wahrheit ist.
+        // Für Mischbetrieb (Liste + Manuell) ist es komplexer. 
+        // Vorerst: Die Liste bestimmt den Wert im Feld.
+        if(gesamtFett > 0) {
+            document.getElementById('fatInput').value = gesamtFett;
+        }
+    }
+
+    // Einen einzelnen Eintrag löschen
+    function loescheEintrag(index) {
+        let liste = JSON.parse(localStorage.getItem('kreon_liste') || "[]");
+        liste.splice(index, 1); // Entfernt das Element an der Stelle 'index'
+        localStorage.setItem('kreon_liste', JSON.stringify(liste));
+        updateFoodList(); // Anzeige aktualisieren
+    }
+
+    // Der Reset Button löscht jetzt alles
     function resetFett() {
         document.getElementById('fatInput').value = '';
         document.getElementById('ergebnisBox').style.display = 'none';
-        localStorage.removeItem('kreon_temp_fett'); // Speicher leeren
+        
+        // Liste löschen
+        localStorage.removeItem('kreon_liste');
+        updateFoodList();
     }
+    
 
     // Hilfsfunktion zum Laden der Checkboxen
     function loadCheckbox(elementId, storageKey) {
