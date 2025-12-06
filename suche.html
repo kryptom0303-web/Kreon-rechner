@@ -81,35 +81,25 @@
     let gewaehlterName = "";
     let html5QrcodeScanner = null;
 
-    // --- SCANNER LOGIK ---
+    // --- SCANNER LOGIK (Bleibt fast gleich) ---
     function startScanner() {
-        // Zeige Kamera-Bereich, verstecke Suchfeld kurz zur Übersicht
         document.getElementById('reader').style.display = "block";
         document.getElementById('stopScanBtn').style.display = "block";
         
         html5QrcodeScanner = new Html5Qrcode("reader");
 
-        // Startet die hintere Kamera (environment)
         html5QrcodeScanner.start(
             { facingMode: "environment" }, 
-            {
-                fps: 10,    // Scannt 10x pro Sekunde
-                qrbox: { width: 250, height: 150 } // Der Fokus-Rahmen
-            },
+            { fps: 10, qrbox: { width: 250, height: 150 } },
             (decodedText, decodedResult) => {
-                // ERFOLG: Code gefunden!
                 console.log(`Code gescannt: ${decodedText}`);
-                stopScanner(); // Kamera sofort aus
-                
-                // Nummer ins Feld schreiben und Suchen starten
+                stopScanner();
                 document.getElementById('searchInput').value = decodedText;
-                suchen();
+                suchen(); // Startet die Suche automatisch
             },
-            (errorMessage) => {
-                // Fehler beim Scannen ignorieren wir (passiert ständig, wenn kein Code im Bild ist)
-            }
+            (errorMessage) => {}
         ).catch(err => {
-            alert("Kamera konnte nicht gestartet werden. Erlaubnis erteilt?");
+            alert("Kamera-Fehler. Bitte Berechtigung prüfen.");
             stopScanner();
         });
     }
@@ -120,64 +110,96 @@
                 document.getElementById('reader').style.display = "none";
                 document.getElementById('stopScanBtn').style.display = "none";
                 html5QrcodeScanner.clear();
-            }).catch(err => {
-                console.log("Fehler beim Stoppen");
-            });
+            }).catch(err => console.log(err));
         }
     }
 
-    // --- SUCHE & BERECHNUNG (wie vorher) ---
+    // --- DIE NEUE INTELLIGENTE SUCHE ---
     async function suchen() {
-        let query = document.getElementById('searchInput').value;
+        let query = document.getElementById('searchInput').value.trim();
         if (!query) return;
 
         document.getElementById('loading').style.display = 'block';
         document.getElementById('results').innerHTML = '';
 
-        let url = `https://de.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1`;
+        // PRÜFUNG: Besteht die Eingabe NUR aus Zahlen? (Dann ist es ein Barcode)
+        let istNurZahlen = /^\d+$/.test(query);
+        let url = "";
+
+        if (istNurZahlen) {
+            // WEG 1: Barcode-Direktsuche (Viel präziser für EANs!)
+            url = `https://world.openfoodfacts.org/api/v0/product/${query}.json`;
+        } else {
+            // WEG 2: Textsuche (Wie bisher)
+            url = `https://de.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1`;
+        }
 
         try {
             let response = await fetch(url);
             let data = await response.json();
             document.getElementById('loading').style.display = 'none';
-            anzeigen(data.products);
+
+            // Die Datenbank antwortet unterschiedlich, je nach Weg. Das gleichen wir hier aus:
+            let ergebnisListe = [];
+
+            if (istNurZahlen) {
+                // Bei Barcode kommt ein EINZELNES Produkt zurück (data.product)
+                if (data.status === 1 && data.product) {
+                    ergebnisListe = [data.product]; // Wir packen es in eine Liste, damit "anzeigen" funktioniert
+                }
+            } else {
+                // Bei Textsuche kommt eine LISTE zurück (data.products)
+                if (data.products) {
+                    ergebnisListe = data.products;
+                }
+            }
+
+            anzeigen(ergebnisListe);
+
         } catch (e) {
-            alert("Fehler oder nichts gefunden.");
+            alert("Fehler bei der Verbindung zur Datenbank.");
             document.getElementById('loading').style.display = 'none';
         }
     }
 
     function anzeigen(produkte) {
         let liste = document.getElementById('results');
+        
         if (!produkte || produkte.length === 0) {
-            liste.innerHTML = '<li style="padding:10px; text-align:center;">Nichts gefunden.</li>';
+            liste.innerHTML = '<li style="padding:10px; text-align:center;">Nichts gefunden. <br><small>Ist der Barcode korrekt?</small></li>';
             return;
         }
 
         produkte.forEach(prod => {
-            if (prod.nutriments && prod.nutriments.fat_100g !== undefined) {
+            // Wir prüfen, ob Fett-Infos da sind (manchmal fehlen die in der Datenbank)
+            let fettWert = (prod.nutriments && prod.nutriments.fat_100g !== undefined) ? prod.nutriments.fat_100g : null;
+
+            if (fettWert !== null) {
                 let li = document.createElement('li');
                 li.className = 'product-item';
-                let bild = prod.image_front_small_url ? `<img src="${prod.image_front_small_url}" class="product-img">` : '';
+                // Bild: Wenn keins da ist, nehmen wir einen Platzhalter oder lassen es leer
+                let bild = prod.image_front_small_url ? `<img src="${prod.image_front_small_url}" class="product-img">` : '<div style="width:50px; margin-right:15px;">💊</div>';
                 
                 li.innerHTML = `
                     ${bild}
                     <div class="product-info">
-                        <span class="product-name">${prod.product_name || 'Unbekannt'}</span>
-                        <span class="product-fat">Fett: ${prod.nutriments.fat_100g}g / 100g</span>
+                        <span class="product-name">${prod.product_name || 'Unbekanntes Produkt'}</span>
+                        <span class="product-fat">Fett: ${fettWert}g / 100g</span>
                     </div>
                 `;
-                li.onclick = () => openPopup(prod.product_name || 'Produkt', prod.nutriments.fat_100g);
+                li.onclick = () => openPopup(prod.product_name || 'Produkt', fettWert);
                 liste.appendChild(li);
             }
         });
     }
 
+    // --- POPUP & SPEICHERN (Bleibt gleich) ---
     function openPopup(name, fett100g) {
         gewaehltesFettPro100g = fett100g;
         gewaehlterName = name;
         document.getElementById('popupTitle').innerText = name;
         document.getElementById('grammPopup').style.display = 'flex';
+        document.getElementById('grammInput').value = ''; // Feld leeren
         document.getElementById('grammInput').focus();
     }
 
@@ -208,6 +230,7 @@
         window.location.href = "index.html";
     }
 </script>
+       
 
 </body>
 </html>
