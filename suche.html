@@ -1,41 +1,56 @@
-<!DOCTYPE html>
+       <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lebensmittel Suche</title>
+    <title>Lebensmittel Suche + Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f0f2f5; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #0084ff; }
         
         input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; font-size: 16px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background-color: #0084ff; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #0073e6; }
-        button.back-btn { background-color: #6c757d; margin-top: 10px; }
+        
+        /* Buttons */
+        .btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; color: white; }
+        .btn-search { background-color: #0084ff; }
+        .btn-scan { background-color: #28a745; } /* Grün für Scanner */
+        .btn-back { background-color: #6c757d; width: 100%; margin-top: 10px; }
 
-        /* Die Ergebnis-Liste */
+        /* Scanner Box */
+        #reader { width: 100%; display: none; margin-bottom: 15px; border: 2px solid #28a745; border-radius: 8px; }
+
+        /* Ergebnisse */
         #results { margin-top: 20px; list-style: none; padding: 0; }
         .product-item { background: #fff; border-bottom: 1px solid #eee; padding: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-        .product-item:hover { background-color: #f9f9f9; }
+        .product-img { width: 50px; height: 50px; object-fit: contain; margin-right: 15px; }
         .product-info { flex-grow: 1; }
         .product-name { font-weight: bold; display: block; }
         .product-fat { color: #666; font-size: 0.9em; }
-        .product-img { width: 50px; height: 50px; object-fit: contain; margin-right: 15px; }
 
-        /* Das Popup für die Grammeingabe */
-        #grammPopup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        /* Popup */
+        #grammPopup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
         .popup-content { background: white; padding: 20px; border-radius: 10px; width: 80%; max-width: 300px; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>🔍 Lebensmittel Suche</h2>
+    <h2>🔍 Suche & Scan</h2>
     
-    <input type="text" id="searchInput" placeholder="Produktname oder EAN-Code...">
-    <button onclick="suchen()">Suchen</button>
-    <button class="back-btn" onclick="zurueck()">Zurück zum Rechner</button>
+    <div id="reader"></div>
+
+    <input type="text" id="searchInput" placeholder="Produktname oder Barcode...">
+    
+    <div class="btn-group">
+        <button class="btn-search" onclick="suchen()">Suchen</button>
+        <button class="btn-scan" onclick="startScanner()">📷 Scan</button>
+    </div>
+    
+    <button class="btn-back" onclick="zurueck()">Zurück zum Rechner</button>
+    <button id="stopScanBtn" class="btn-back" style="display:none; background-color: #dc3545;" onclick="stopScanner()">Kamera aus</button>
 
     <div id="loading" style="display:none; text-align:center; margin-top:20px;">Lade...</div>
     <ul id="results"></ul>
@@ -46,15 +61,62 @@
         <h3 id="popupTitle">Menge eingeben</h3>
         <p>Wie viel wird gegessen?</p>
         <input type="number" id="grammInput" placeholder="Gramm (z.B. 100)">
-        <button onclick="uebernehmen()" style="margin-top:10px;">Übernehmen</button>
-        <button onclick="closePopup()" class="back-btn" style="background: white; color: #666; margin-top: 5px;">Abbrechen</button>
+        <button class="btn-search" onclick="uebernehmen()" style="width:100%; margin-top:10px;">Übernehmen</button>
+        <button onclick="closePopup()" class="btn-back" style="background: white; color: #666; margin-top: 5px;">Abbrechen</button>
     </div>
 </div>
 
-    <script>
+<script>
     let gewaehltesFettPro100g = 0;
-    let gewaehlterName = ""; // Neu: Wir merken uns den Namen
+    let gewaehlterName = "";
+    let html5QrcodeScanner = null;
 
+    // --- SCANNER LOGIK ---
+    function startScanner() {
+        // Zeige Kamera-Bereich, verstecke Suchfeld kurz zur Übersicht
+        document.getElementById('reader').style.display = "block";
+        document.getElementById('stopScanBtn').style.display = "block";
+        
+        html5QrcodeScanner = new Html5Qrcode("reader");
+
+        // Startet die hintere Kamera (environment)
+        html5QrcodeScanner.start(
+            { facingMode: "environment" }, 
+            {
+                fps: 10,    // Scannt 10x pro Sekunde
+                qrbox: { width: 250, height: 150 } // Der Fokus-Rahmen
+            },
+            (decodedText, decodedResult) => {
+                // ERFOLG: Code gefunden!
+                console.log(`Code gescannt: ${decodedText}`);
+                stopScanner(); // Kamera sofort aus
+                
+                // Nummer ins Feld schreiben und Suchen starten
+                document.getElementById('searchInput').value = decodedText;
+                suchen();
+            },
+            (errorMessage) => {
+                // Fehler beim Scannen ignorieren wir (passiert ständig, wenn kein Code im Bild ist)
+            }
+        ).catch(err => {
+            alert("Kamera konnte nicht gestartet werden. Erlaubnis erteilt?");
+            stopScanner();
+        });
+    }
+
+    function stopScanner() {
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.stop().then(() => {
+                document.getElementById('reader').style.display = "none";
+                document.getElementById('stopScanBtn').style.display = "none";
+                html5QrcodeScanner.clear();
+            }).catch(err => {
+                console.log("Fehler beim Stoppen");
+            });
+        }
+    }
+
+    // --- SUCHE & BERECHNUNG (wie vorher) ---
     async function suchen() {
         let query = document.getElementById('searchInput').value;
         if (!query) return;
@@ -70,7 +132,7 @@
             document.getElementById('loading').style.display = 'none';
             anzeigen(data.products);
         } catch (e) {
-            alert("Fehler beim Laden. Internetverbindung prüfen.");
+            alert("Fehler oder nichts gefunden.");
             document.getElementById('loading').style.display = 'none';
         }
     }
@@ -95,7 +157,6 @@
                         <span class="product-fat">Fett: ${prod.nutriments.fat_100g}g / 100g</span>
                     </div>
                 `;
-                // WICHTIG: Wir übergeben jetzt auch den Namen!
                 li.onclick = () => openPopup(prod.product_name || 'Produkt', prod.nutriments.fat_100g);
                 liste.appendChild(li);
             }
@@ -104,7 +165,7 @@
 
     function openPopup(name, fett100g) {
         gewaehltesFettPro100g = fett100g;
-        gewaehlterName = name; // Name speichern
+        gewaehlterName = name;
         document.getElementById('popupTitle').innerText = name;
         document.getElementById('grammPopup').style.display = 'flex';
         document.getElementById('grammInput').focus();
@@ -121,7 +182,6 @@
         let totalFett = (menge * gewaehltesFettPro100g) / 100;
         totalFett = Math.round(totalFett * 10) / 10;
 
-        // NEUE LOGIK: Wir laden die alte Liste, fügen hinzu, speichern die Liste
         let aktuelleListe = JSON.parse(localStorage.getItem('kreon_liste') || "[]");
         
         aktuelleListe.push({
@@ -131,15 +191,13 @@
         });
 
         localStorage.setItem('kreon_liste', JSON.stringify(aktuelleListe));
-
         window.location.href = "index.html";
     }
 
     function zurueck() {
         window.location.href = "index.html";
     }
-    </script>
-    
+</script>
 
 </body>
 </html>
